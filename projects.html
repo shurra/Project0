@@ -43,7 +43,7 @@
         <p class="lead">This is simple keyboard controller for Blackmagic Atem Videomixer</p>
         <hr class="my-4">
         <h3>Connection diagramm</h3>
-        <img src="images/Arduino_Atem.png" height="307" width="820"/>
+        <img src="images/Arduino_Atem.png"/>
         <h3>Components and supplies</h3>
         <div class="row">
             <div class="col-md-4 col-sm-6">
@@ -78,14 +78,409 @@
                     <li class="list-group-item d-flex justify-content-between align-items-center">
                         Kasper Skaarhoj Atem Library
                         <a class="badge badge-primary badge-pill" href="https://github.com/kasperskaarhoj/SKAARHOJ-Open-Engineering/tree/master/ArduinoLibs">Download</a>
-
                     </li>
                 </ul>
             </div>
+        </div>
+        <hr class="my-4">
+        <div class="panel-group row">
+            <div class="panel panel-default">
+                <div class="panel-heading row">
+                    <h4 class="panel-title">
+                        <a id="code_view" class="btn" data-toggle="collapse" href="#collapse1">Code (click to view)</a>
+                    </h4>
+                </div>
+                <div id="collapse1" class="panel-collapse collapse">
+                     <pre><code id="arduino-code">
+/*
+ The circuit:
+ KBD Clock (PS2 pin 1)&nbsp;to&nbsp;an&nbsp;interrupt pin on&nbsp;Arduino ( this example pin&nbsp;2&nbsp;)
+ KBD Data (PS2 pin 5)&nbsp;to&nbsp;a&nbsp;data pin ( this example pin&nbsp;3&nbsp;)
+ +5V&nbsp;from Arduino to&nbsp;PS2 pin&nbsp;4
+ GND from Arduino to&nbsp;PS2 pin&nbsp;3
+*/
+// Including libraries:
+#include <SPI.h> // needed for Arduino versions later than 0018
+#include <Ethernet.h>
+#include <EEPROM.h> // For storing IP&nbsp;numbers
+// Include ATEM library and make an&nbsp;instance:
+#include <ATEMbase.h>
+#include <ATEMext.h>
+ATEMext AtemSwitcher;
 
-            <!--<div class="col-md-4 col-sm-6" id="third">-->
-            <!--One of three columns-->
-            <!--</div>-->
+#include <Streaming.h>
+
+#include <PS2KeyAdvanced.h>
+//#include <PS2Keyboard.h>
+
+/* Keyboard constants Change to&nbsp;suit your Arduino
+ define pins used for data and clock from keyboard */
+#define DATAPIN&nbsp;3
+#define IRQPIN&nbsp;2
+#define PS2_LOCK_NUM&nbsp;1
+uint16_t&nbsp;c;
+
+PS2KeyAdvanced keyboard;
+//PS2Keyboard keyboard;
+//Tally pins:
+//int tallyPins[] = {14,&nbsp;15,&nbsp;16,&nbsp;17,&nbsp;18,&nbsp;19,&nbsp;20,&nbsp;21};
+int tallyPins[] = {43,&nbsp;45,&nbsp;47,&nbsp;49,&nbsp;39,&nbsp;41,&nbsp;51,&nbsp;53};
+
+// Configure the IP&nbsp;addresses and MAC address with the sketch &laquo;ConfigEthernetAddresses&raquo;:
+uint8_t&nbsp;ip[4];&nbsp;// Will hold the Arduino IP&nbsp;address
+uint8_t&nbsp;atem_ip[4];&nbsp;// Will hold the ATEM IP&nbsp;address
+uint8_t&nbsp;mac[6];&nbsp;// Will hold the Arduino Ethernet shield/board MAC address
+                                    //(loaded from EEPROM memory, set with ConfigEthernetAddresses example sketch)
+
+uint8_t&nbsp;atemME =&nbsp;0;
+
+void setup() {
+ // Start the Ethernet, Serial (debugging) and&nbsp;UDP:
+ Serial.begin(115200);
+ Serial  Serial << <nobr>F("\n-</nobr> - - - - - - -\nSerial Started\n&laquo;");
+
+ // Setting the Arduino IP&nbsp;address:
+ ip[0]&nbsp; = EEPROM.read(0&nbsp;+&nbsp;2);
+ ip[1]&nbsp; = EEPROM.read(1&nbsp;+&nbsp;2);
+ ip[2]&nbsp; = EEPROM.read(2&nbsp;+&nbsp;2);
+ ip[3]&nbsp; = EEPROM.read(3&nbsp;+&nbsp;2);
+
+ // Setting the ATEM IP&nbsp;address:
+ atem_ip[0]&nbsp; = EEPROM.read(0&nbsp;+ 2&nbsp;+&nbsp;4);
+ atem_ip[1]&nbsp; = EEPROM.read(1&nbsp;+ 2&nbsp;+&nbsp;4);
+ atem_ip[2]&nbsp; = EEPROM.read(2&nbsp;+ 2&nbsp;+&nbsp;4);
+ atem_ip[3]&nbsp; = EEPROM.read(3&nbsp;+ 2&nbsp;+&nbsp;4);
+
+ Serial  Serial << F("SKAARHOJ&nbsp;Device IP&nbsp;Address: &laquo;) << ip[0]&nbsp; << &raquo;." << ip[1]&nbsp; << &laquo;.&raquo; << ip[2]&nbsp; << &laquo;.&raquo; << ip[3]&nbsp; <<&nbsp;&laquo;\n&raquo;";
+ Serial  Serial << F("ATEM&nbsp;Switcher IP&nbsp;Address: &laquo;) << atem_ip[0]&nbsp; << &raquo;." << atem_ip[1]&nbsp; << &laquo;.&raquo; << atem_ip[2]&nbsp; << &laquo;.&raquo; << atem_ip[3]&nbsp; <<&nbsp;&laquo;\n&raquo;";
+
+ // Setting MAC address:
+ mac[0]&nbsp;= EEPROM.read(10);
+ mac[1]&nbsp;= EEPROM.read(11);
+ mac[2]&nbsp;= EEPROM.read(12);
+ mac[3]&nbsp;= EEPROM.read(13);
+ mac[4]&nbsp;= EEPROM.read(14);
+ mac[5]&nbsp;= EEPROM.read(15);
+ char buffer[18];
+ sprintf(buffer, &laquo;%02X:%02X:%02X:%02X:%02X:%02X&raquo;, mac[0],&nbsp;mac[1],&nbsp;mac[2],&nbsp;mac[3],&nbsp;mac[4],&nbsp;mac[5]);
+ Serial  Serial << F("SKAARHOJ&nbsp;Device MAC address: &laquo;) << buffer << F(&raquo;&nbsp;&mdash; Checksum: ")
+  << ((mac[0]&nbsp;+ mac[1]&nbsp;+ mac[2]&nbsp;+ mac[3]&nbsp;+ mac[4]&nbsp;+ mac[5])&nbsp;& 0xFF) <<&nbsp;&laquo;\n&raquo;";
+ if&nbsp;((uint8_t)EEPROM.read(16)&nbsp;!= ((mac[0]&nbsp;+ mac[1]&nbsp;+ mac[2]&nbsp;+ mac[3]&nbsp;+ mac[4]&nbsp;+ mac[5])&nbsp;& 0xFF)) {
+ Serial  Serial << F("MAC&nbsp;address not found in&nbsp;EEPROM memory!\n&laquo;") <<
+ F("Please&nbsp;load example sketch ConfigEthernetAddresses to&nbsp;set it.\n&laquo;)&nbsp; F("Please&nbsp;load example sketch ConfigEthernetAddresses to&nbsp;set it.\n&raquo;") <<
+ F("The&nbsp;MAC address is&nbsp;found on&nbsp;the backside of&nbsp;your Ethernet Shield/Board\n&nbsp;(STOP)&laquo;);
+ while (true);
+ }
+
+ Ethernet.begin(mac,&nbsp;ip);
+
+ // Configure the keyboard library
+ keyboard.begin( DATAPIN, IRQPIN );
+ keyboard.setNoBreak(1);&nbsp;// No&nbsp;break codes for keys (when key released)
+ keyboard.setNoRepeat(1);&nbsp;// Don't&nbsp;repeat shift ctrl&nbsp;etc
+
+ // Initialize a&nbsp;connection to&nbsp;the switcher:
+ AtemSwitcher.begin(IPAddress(atem_ip[0],&nbsp;atem_ip[1],&nbsp;atem_ip[2],&nbsp;atem_ip[3]),&nbsp;56417);
+ // AtemSwitcher.serialOutput(0&times;80);&nbsp;// Remove or&nbsp;comment out this line for production code. Serial output may decrease performance!
+ AtemSwitcher.connect();
+ //Tally setup
+ for (int i&nbsp;= 0;&nbsp;i&nbsp; for (int i&nbsp;= 0;&nbsp;i&nbsp;<= 7;&nbsp;i++) {
+ pinMode(tallyPins[i],&nbsp;OUTPUT);
+ digitalWrite(tallyPins[i],&nbsp;HIGH);
+ }
+ for (int i&nbsp;= 0;&nbsp;i&nbsp; for (int i&nbsp;= 0;&nbsp;i&nbsp;<= 7;&nbsp;i++) {
+ digitalWrite(tallyPins[i],&nbsp;LOW);
+ // delay(200);
+ }
+ // ######### End setup ############
+}
+bool AtemOnline = false;
+
+void loop() {
+ // Check for packets, respond to&nbsp;them etc. Keeping the connection alive!
+ AtemSwitcher.runLoop();
+
+ // If&nbsp;the switcher has been initialized, check for button presses as&nbsp;reflect status of&nbsp;switcher in&nbsp;button lights:
+ if&nbsp;(AtemSwitcher.hasInitialized()) {
+ if&nbsp;(!AtemOnline) {
+ AtemOnline = true;
+ Serial  Serial << F("ATEM&nbsp;Connected\n&laquo;");
+ //ledConnecting();
+ //ledOnline();
+ }
+ //readResistors ();
+ readkey();
+ tallyLights();
+ //test();
+ //manageButtons(); //îñíîâí³ ä³¿ êíîïîê ³&nbsp;ò.ä.
+ //slider();
+ //manageLeds();
+ //ledBlink();
+ // AtemSwitcher.delay(20);
+ // delay(5);
+ } else {
+ if&nbsp;(AtemOnline) {
+ AtemOnline = false;
+ //ledDisconnected();
+ Serial  Serial << F("Disconnected\n&laquo;");
+
+ }
+ }
+}
+//############################################
+void tallyLights() {
+ //pins&nbsp;&mdash; {43,&nbsp;45,&nbsp;47,&nbsp;49,&nbsp;39,&nbsp;41,&nbsp;51,&nbsp;53}
+ //pins&nbsp;&mdash; {16,&nbsp;17,&nbsp;18,&nbsp;19,&nbsp;14,&nbsp;15,&nbsp;20,&nbsp;21}
+ //numbers{ 0,&nbsp;1,&nbsp;2,&nbsp;3,&nbsp;4,&nbsp;5,&nbsp;6,&nbsp;7}
+ //inputs { 5,&nbsp;6,&nbsp;1,&nbsp;2,&nbsp;3,&nbsp;4,&nbsp;7,&nbsp;8}
+ for (int i&nbsp;= 0;&nbsp;i&nbsp; for (int i&nbsp;= 0;&nbsp;i&nbsp;<= 7;&nbsp;i++) {
+ digitalWrite(tallyPins[i],&nbsp;AtemSwitcher.getTallyBySourceTallyFlags(i&nbsp;+ 1)&B00000001);
+ }
+
+}
+//############################################
+void readkey() {
+ if&nbsp;( keyboard.available() )
+ {
+ // read the next&nbsp;key
+ c&nbsp;= keyboard.read();
+ if&nbsp;( c&nbsp;>&nbsp;0&nbsp;)
+ {
+ // Serial.print( F(&nbsp;&laquo;Value " ) );
+ // Serial.print( c,&nbsp;HEX );
+ // Serial.print( F(&nbsp;&laquo;&nbsp;&mdash; Status Bits " ) );
+ // Serial.print( c&nbsp;>> 8,&nbsp;HEX );
+ // Serial.print( F(&nbsp;&laquo; Code " ) );
+ //
+ // Serial.println( c&nbsp;& 0xFF,&nbsp;HEX );
+ Serial.println&copy;;
+ manageButtons&copy;;
+ }
+ }
+ //else{Serial.print("no&nbsp;key pressed&laquo;); Serial.println&copy;;delay(100);}
+}
+void manageButtons(int keycode) {
+ //int keycode = readkey();
+ long level;
+ switch (keycode)
+ {
+ // ##################### Preview Input Buttons
+ case 90:&nbsp;// Key z&nbsp;or&nbsp;Z
+ case 4186: // Key z&nbsp;or&nbsp;Z
+ AtemSwitcher.setPreviewInputVideoSource(atemME,&nbsp;5);
+ break;
+ case 88:&nbsp;// Key x&nbsp;or&nbsp;X
+ case 4184: // Key x&nbsp;or&nbsp;X
+ AtemSwitcher.setPreviewInputVideoSource(atemME,&nbsp;6);
+ break;
+ case 67:&nbsp;// Key c&nbsp;or&nbsp;C
+ case 4163: // Key c&nbsp;or&nbsp;C
+ AtemSwitcher.setPreviewInputVideoSource(atemME,&nbsp;1);
+ break;
+ case 86:&nbsp;// Key v&nbsp;or&nbsp;V
+ case 4182:
+ AtemSwitcher.setPreviewInputVideoSource(atemME,&nbsp;2);
+ break;
+ case 66:&nbsp;// Key b&nbsp;or&nbsp;B
+ case 4162:
+ AtemSwitcher.setPreviewInputVideoSource(atemME,&nbsp;3);
+ break;
+ case 78:&nbsp;// Key n&nbsp;or&nbsp;N
+ case 4174:
+ AtemSwitcher.setPreviewInputVideoSource(atemME,&nbsp;4);
+ break;
+ case 77:&nbsp;// Key m&nbsp;or&nbsp;M
+ case 4173:
+ AtemSwitcher.setPreviewInputVideoSource(atemME,&nbsp;7);
+ break;
+ case 59:&nbsp;// Key , or&nbsp; case 59:&nbsp;// Key ,&nbsp;or&nbsp;<
+ case 4155:
+ AtemSwitcher.setPreviewInputVideoSource(atemME,&nbsp;8);
+ break;
+ case 16646: // Key Left Shift
+ AtemSwitcher.setPreviewInputVideoSource(atemME, 1000); //input 1000&nbsp;&mdash; BARS
+ break;
+ case 61:&nbsp;// Key .&nbsp;or&nbsp;>
+ case 4157:
+ AtemSwitcher.setPreviewInputVideoSource(atemME, 3010); //input 1000&nbsp;&mdash;&nbsp;MP1
+ break;
+ case 62:&nbsp;// Key /&nbsp;or&nbsp;?
+ case 4158:
+ AtemSwitcher.setPreviewInputVideoSource(atemME, 3020); //input 1000&nbsp;&mdash;&nbsp;MP2
+ break;
+ // ##################### AUX1 Input Buttons
+ case 65:&nbsp;// Key a&nbsp;or&nbsp;A
+ case 4161:
+ AtemSwitcher.setAuxSourceInput(0,&nbsp;5);
+ break;
+ case 83:&nbsp;// Key s&nbsp;or&nbsp;S
+ case 4179:
+ AtemSwitcher.setAuxSourceInput(0,&nbsp;6);
+ break;
+ case 68:&nbsp;// Key d&nbsp;or&nbsp;D
+ case 4164:
+ AtemSwitcher.setAuxSourceInput(0,&nbsp;1);
+ break;
+ case 70:&nbsp;// Key f&nbsp;or&nbsp;F
+ case 4166:
+ AtemSwitcher.setAuxSourceInput(0,&nbsp;2);
+ break;
+ case 71:&nbsp;// Key g&nbsp;or&nbsp;G
+ case 4167:
+ AtemSwitcher.setAuxSourceInput(0,&nbsp;3);
+ break;
+ case 72:&nbsp;// Key h&nbsp;or&nbsp;H
+ case 4168:
+ AtemSwitcher.setAuxSourceInput(0,&nbsp;4);
+ break;
+ case 74:&nbsp;// Key j&nbsp;or&nbsp;J
+ case 4170:
+ AtemSwitcher.setAuxSourceInput(0,&nbsp;7);
+ break;
+ case 75:&nbsp;// Key k&nbsp;or&nbsp;K
+ case 4171:
+ AtemSwitcher.setAuxSourceInput(0,&nbsp;8);
+ break;
+ case 58:&nbsp;//&nbsp;Key '
+ case 4154:
+ AtemSwitcher.setAuxSourceInput(0,&nbsp;1000); //input 1000&nbsp;&mdash; BARS
+ break;
+ case 76:&nbsp;// Key l&nbsp;or&nbsp;L
+ case 4172:
+ AtemSwitcher.setAuxSourceInput(0,&nbsp;10011); //input 10011&nbsp;&mdash; ME&nbsp;1&nbsp;Prev
+ break;
+ case 91:&nbsp;//&nbsp;Key ;
+ case 4187:
+ AtemSwitcher.setAuxSourceInput(0,&nbsp;10010); //input 1000&nbsp;&mdash; ME&nbsp;1&nbsp;Prog
+ break;
+ // ##################### Program Input Buttons
+ case 64:&nbsp;//&nbsp;Key `
+ case 4160:
+ AtemSwitcher.setProgramInputVideoSource(atemME, 1000); //input 1000&nbsp;&mdash; BARS
+ break;
+ case 49:&nbsp;// Key&nbsp;1
+ case 4145:
+ AtemSwitcher.setProgramInputVideoSource(atemME,&nbsp;5);
+ break;
+ case 50:&nbsp;// Key&nbsp;2
+ case 4146:
+ AtemSwitcher.setProgramInputVideoSource(atemME,&nbsp;6);
+ break;
+ case 51:&nbsp;// Key&nbsp;3
+ case 4147:
+ AtemSwitcher.setProgramInputVideoSource(atemME,&nbsp;1);
+ break;
+ case 52:&nbsp;// Key&nbsp;4
+ case 4148:
+ AtemSwitcher.setProgramInputVideoSource(atemME,&nbsp;2);
+ break;
+ case 53:&nbsp;// Key&nbsp;5
+ case 4149:
+ AtemSwitcher.setProgramInputVideoSource(atemME,&nbsp;3);
+ break;
+ case 54:&nbsp;// Key&nbsp;6
+ case 4150:
+ AtemSwitcher.setProgramInputVideoSource(atemME,&nbsp;4);
+ break;
+ case 55:&nbsp;// Key&nbsp;7
+ case 4151:
+ AtemSwitcher.setProgramInputVideoSource(atemME,&nbsp;7);
+ break;
+ case 56:&nbsp;// Key&nbsp;8
+ case 4152:
+ AtemSwitcher.setProgramInputVideoSource(atemME,&nbsp;8);
+ break;
+ case 57:&nbsp;// Key&nbsp;9
+ case 4153:
+ AtemSwitcher.setProgramInputVideoSource(atemME, 3010); //input 3010&nbsp;&mdash;&nbsp;MP1
+ break;
+ case 48:&nbsp;// Key&nbsp;0
+ case 4144:
+ AtemSwitcher.setProgramInputVideoSource(atemME, 3020); //input 3020&nbsp;&mdash;&nbsp;MP2
+ break;
+ case 60:&nbsp;//&nbsp;Key -
+ case 4156:
+ AtemSwitcher.setProgramInputVideoSource(atemME, 0);&nbsp;//input 0&nbsp;&mdash; Black
+ break;
+ // ##################### Cut & Auto buttons
+ case 43:&nbsp;// Key Enter on&nbsp;numpad
+ case 4139:
+ AtemSwitcher.performCutME(atemME);
+ break;
+ case 281: // Key 0&nbsp;on&nbsp;numpad
+ case 4377:
+ case&nbsp;32:
+ case 4128:
+ AtemSwitcher.performAutoME(atemME);
+ break;
+ // ##################### Transition time buttons
+ case 33:&nbsp;// Key 1&nbsp;on&nbsp;numpad
+ AtemSwitcher.setTransitionMixRate(atemME,&nbsp;25);
+ AtemSwitcher.setTransitionWipeRate(atemME,&nbsp;25);
+ break;
+ case 34:&nbsp;// Key 2&nbsp;on&nbsp;numpad
+ AtemSwitcher.setTransitionMixRate(atemME,&nbsp;50);
+ AtemSwitcher.setTransitionWipeRate(atemME,&nbsp;50);
+ break;
+ case 35:&nbsp;// Key 3&nbsp;on&nbsp;numpad
+ AtemSwitcher.setTransitionMixRate(atemME,&nbsp;75);
+ AtemSwitcher.setTransitionWipeRate(atemME,&nbsp;75);
+ break;
+ case 36:&nbsp;// Key 4&nbsp;on&nbsp;numpad
+ AtemSwitcher.setTransitionMixRate(atemME,&nbsp;100);
+ AtemSwitcher.setTransitionWipeRate(atemME,&nbsp;100);
+ break;
+ case 37:&nbsp;// Key 5&nbsp;on&nbsp;numpad
+ AtemSwitcher.setTransitionMixRate(atemME,&nbsp;125);
+ AtemSwitcher.setTransitionWipeRate(atemME,&nbsp;125);
+ break;
+ case 38:&nbsp;// Key 6&nbsp;on&nbsp;numpad
+ AtemSwitcher.setTransitionMixRate(atemME,&nbsp;150);
+ AtemSwitcher.setTransitionWipeRate(atemME,&nbsp;150);
+ break;
+ case 39:&nbsp;// Key 7&nbsp;on&nbsp;numpad
+ AtemSwitcher.setTransitionMixRate(atemME,&nbsp;175);
+ AtemSwitcher.setTransitionWipeRate(atemME,&nbsp;175);
+ break;
+ case 40:&nbsp;// Key 8&nbsp;on&nbsp;numpad
+ AtemSwitcher.setTransitionMixRate(atemME,&nbsp;200);
+ AtemSwitcher.setTransitionWipeRate(atemME,&nbsp;200);
+ break;
+ case 41:&nbsp;// Key 9&nbsp;on&nbsp;numpad
+ AtemSwitcher.setTransitionMixRate(atemME,&nbsp;250);
+ AtemSwitcher.setTransitionWipeRate(atemME,&nbsp;250);
+ break;
+ // ##################### Volume level buttons
+ case 275: // Key PageUP&nbsp;&mdash; MasterVolumeLevel
+ level = AtemSwitcher.getAudioMixerMasterVolume();
+ AtemSwitcher.setAudioMixerMasterVolume(level + 1000 > 65381 ? 65381 : level + 1000);
+ break;
+ case 276: // Key PageDOWN
+ level = AtemSwitcher.getAudioMixerMasterVolume();
+ AtemSwitcher.setAudioMixerMasterVolume(level&nbsp;&mdash; 1000  AtemSwitcher.setAudioMixerMasterVolume(level&nbsp;&mdash; 1000 < 0&nbsp;? 0&nbsp;: level&nbsp;&mdash; 1000);
+ break;
+ // ##################### Run Macros buttons
+ case 353: // Key&nbsp;F1
+ case 4449:
+ AtemSwitcher.setMacroAction(0,&nbsp;0);
+ break;
+ case 354: // Key&nbsp;F2
+ case 4450:
+ AtemSwitcher.setMacroAction(1,&nbsp;0);
+ break;
+ case 355: // Key&nbsp;F3
+ case 4451:
+ AtemSwitcher.setMacroAction(2,&nbsp;0);
+ break;
+ case 356: // Key&nbsp;F4
+ case 4452:
+ AtemSwitcher.setMacroAction(3,&nbsp;0);
+ break;
+ }
+}
+                        </code></pre>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -131,14 +526,9 @@
                     <li class="list-group-item d-flex justify-content-between align-items-center">
                         Etcher for MacOSX/Linux
                         <a class="badge badge-primary badge-pill" href="http://www.etcher.io/">Download</a>
-
                     </li>
                 </ul>
             </div>
-
-            <!--<div class="col-md-4 col-sm-6" id="third">-->
-            <!--One of three columns-->
-            <!--</div>-->
         </div>
         <div class="instruction">
             <h4>Instruction:</h4>
@@ -146,13 +536,13 @@
                 <li>
                     <h5>FLASH IT</h5>
                     <div class="row">
-                        <div class="col-4">
+                        <div class="col-sm-12 col-md-4">
                             <div class="list-group" id="list-tab" role="tablist">
                                 <a class="list-group-item list-group-item-action active" id="list-home-list" data-toggle="list" href="#list-home" role="tab" aria-controls="home">Windows</a>
                                 <a class="list-group-item list-group-item-action" id="list-profile-list" data-toggle="list" href="#list-profile" role="tab" aria-controls="profile">MacOSX/Linux</a>
                             </div>
                         </div>
-                        <div class="col-8">
+                        <div class="col-sm-6 col-md-8">
                             <div class="tab-content" id="nav-tabContent">
                                 <div class="tab-pane fade show active" id="list-home" role="tabpanel" aria-labelledby="list-home-list">
                                     <ul>
@@ -188,13 +578,13 @@
                 <li>
                     <h5>PREPARE IT</h5>
                     <ul>
-                        <li><span style="font-size: 18px;">Insert the SD Card into the Device</span></li>
-                        <li><span style="font-size: 18px;">Plug the Ethernet Cable</span></li>
-                        <li><span style="font-size: 18px;">Connect the USB DAC, otherwise plug your Audio connection of choice</span></li>
-                        <li><span style="font-size: 18px;">Connect your USB Hard Drive, if any</span></li>
-                        <li><span style="font-size: 18px;">Connect any other device you may want to use (USB HUB, Wi-Fi Dongle, etc.)</span></li>
-                        <li><span style="font-size: 18px;">Power the device on</span></li>
-                        <li><span style="font-size: 18px;">Done!</span></li>
+                        <li><span>Insert the SD Card into the Device</span></li>
+                        <li><span>Plug the Ethernet Cable</span></li>
+                        <li><span>Connect the USB DAC, otherwise plug your Audio connection of choice</span></li>
+                        <li><span>Connect your USB Hard Drive, if any</span></li>
+                        <li><span>Connect any other device you may want to use (USB HUB, Wi-Fi Dongle, etc.)</span></li>
+                        <li><span>Power the device on</span></li>
+                        <li><span>Done!</span></li>
                     </ul>
                 </li>
                 <li>
@@ -209,15 +599,18 @@
         </div>
     </div>
     <footer>
-        <span class="text-muted">CS50's Web Programming with Python and JavaScript. Project 0.</span>
-        <span class="text-muted">Posted by: Roman Shkromyda</span>
+        <span>CS50's Web Programming with Python and JavaScript. Project 0.</span>
+        <span>Posted by: Roman Shkromyda</span>
     </footer>
 </div>
+
+<button onclick="topFunction()" id="toTop" title="Go to top">Top</button>
 
 <!-- Optional JavaScript -->
 <!-- jQuery first, then Popper.js, then Bootstrap JS -->
 <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49" crossorigin="anonymous"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy" crossorigin="anonymous"></script>
+<script src="js/script.js"></script>
 </body>
 </html>
