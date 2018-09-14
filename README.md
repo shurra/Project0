@@ -1,7 +1,8 @@
 # Project 0
 
-Web Programming with Python and JavaScript
-    Folders structure:
+<h1>Web Programming with Python and JavaScript</h1>
+    <h2>Folders structure:</h2>
+<pre>
 |-- arduino.html        -- Arduino microcontrollers page html
 |-- index.html          -- index page html
 |-- projects.html       -- Projects page html
@@ -23,6 +24,6 @@ Web Programming with Python and JavaScript
         |-- volumio.png
     |-- js              -- main JavaScrits directory
         |-- script.js
-        
-    Dependencies:
+</pre>        
+    <h2>Dependencies:</h2>
         Bootstrap 4.1.3
